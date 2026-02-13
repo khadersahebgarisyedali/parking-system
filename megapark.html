@@ -1,0 +1,960 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MegaPark | Advanced Smart Parking Ecosystem</title>
+    <meta name="description"
+        content="India's most advanced AI-powered parking management system. Real-time tracking, secure payments, and smart analytics.">
+
+    <!-- External Assets -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://www.paypal.com/sdk/js?client-id=sb&currency=USD"></script>
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#6366f1',
+                        'primary-dark': '#4f46e5',
+                        secondary: '#10b981',
+                        accent: '#f43f5e',
+                        dark: '#0f172a',
+                        card: 'rgba(30, 41, 59, 0.7)',
+                    },
+                    fontFamily: {
+                        outfit: ['Outfit', 'sans-serif'],
+                        jakarta: ['Plus Jakarta Sans', 'sans-serif'],
+                    },
+                    animation: {
+                        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                        'float': 'float 6s ease-in-out infinite',
+                    },
+                    keyframes: {
+                        float: {
+                            '0%, 100%': { transform: 'translateY(0)' },
+                            '50%': { transform: 'translateY(-20px)' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style type="text/tailwindcss">
+        @layer base {
+            body { @apply bg-dark text-slate-200 font-jakarta antialiased; }
+        }
+        @layer components {
+            .glass { @apply bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl; }
+            .btn-primary { @apply px-6 py-3 bg-gradient-to-r from-primary to-primary-dark hover:scale-105 text-white font-bold rounded-xl transition-all shadow-lg shadow-primary/20 active:scale-95 flex items-center gap-2 justify-center; }
+            .btn-outline { @apply px-6 py-3 bg-white/5 hover:bg-white/10 border border-white/10 text-white font-bold rounded-xl transition-all flex items-center gap-2 justify-center; }
+            .nav-link { @apply cursor-pointer hover:text-primary transition-colors font-semibold text-sm; }
+            .view { @apply hidden opacity-0 transition-opacity duration-500; }
+            .view.active { @apply block opacity-100; }
+            .slot-card { @apply aspect-square glass flex flex-col items-center justify-center gap-2 cursor-pointer transition-all border-2 border-transparent; }
+            .slot-card.occupied { @apply bg-red-500/10 border-red-500/30 cursor-not-allowed opacity-60; }
+            .slot-card.available { @apply hover:border-primary hover:bg-primary/10; }
+            .slot-card.selected { @apply border-secondary bg-secondary/20 shadow-lg shadow-secondary/20; }
+        }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { @apply bg-dark; }
+        ::-webkit-scrollbar-thumb { @apply bg-primary rounded-full; }
+    </style>
+</head>
+
+<body class="overflow-x-hidden">
+
+    <!-- Global Navigation -->
+    <nav
+        class="fixed top-0 w-full z-[1000] py-4 px-6 lg:px-12 glass rounded-none border-t-0 border-x-0 flex justify-between items-center bg-dark/80">
+        <div class="flex items-center gap-3 cursor-pointer" onclick="app.showView('landing')">
+            <div class="w-10 h-10 bg-primary rounded-xl flex items-center justify-center shadow-lg shadow-primary/30">
+                <i class="fas fa-parking text-xl text-white"></i>
+            </div>
+            <span class="text-xl font-outfit font-bold tracking-tight text-white italic">MEGAPARK<span
+                    class="text-primary">.pro</span></span>
+        </div>
+
+        <div class="hidden md:flex items-center gap-8">
+            <span onclick="app.showView('landing')" class="nav-link">Home</span>
+            <span onclick="app.showView('map')" class="nav-link">Locations</span>
+            <span onclick="app.showView('booking')" class="nav-link">Book Slot</span>
+            <span onclick="app.showView('dashboard')" class="nav-link">Dashboard</span>
+            <span onclick="app.toggleAdmin()" class="nav-link text-accent">Admin</span>
+        </div>
+
+        <div class="flex items-center gap-4">
+            <button onclick="app.showView('booking')" class="btn-primary py-2 px-5 hidden sm:flex">Reserve Now</button>
+            <button onclick="app.toggleMenu()"
+                class="md:hidden text-white text-2xl hover:text-primary transition-colors focus:outline-none">
+                <i class="fas fa-bars"></i>
+            </button>
+        </div>
+    </nav>
+
+    <!-- Mobile Menu Overlay -->
+    <div id="mobile-menu"
+        class="fixed inset-0 z-[1500] bg-dark/95 backdrop-blur-2xl p-10 flex flex-col gap-8 transition-all duration-500 translate-x-full md:hidden">
+        <div class="flex justify-between items-center border-b border-white/10 pb-6">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+                    <i class="fas fa-parking text-white"></i>
+                </div>
+                <span class="text-xl font-outfit font-bold text-white tracking-widest italic uppercase">MENU</span>
+            </div>
+            <button onclick="app.toggleMenu()" class="text-white text-3xl">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="flex flex-col gap-6 text-2xl font-bold">
+            <span onclick="app.showView('landing'); app.toggleMenu()"
+                class="hover:text-primary transition-colors">Home</span>
+            <span onclick="app.showView('map'); app.toggleMenu()"
+                class="hover:text-primary transition-colors">Locations</span>
+            <span onclick="app.showView('booking'); app.toggleMenu()" class="hover:text-primary transition-colors">Book
+                Slot</span>
+            <span onclick="app.showView('dashboard'); app.toggleMenu()"
+                class="hover:text-primary transition-colors">Dashboard</span>
+            <span onclick="app.toggleAdmin(); app.toggleMenu()" class="text-accent">Admin</span>
+        </div>
+        <div class="mt-auto space-y-6">
+            <button onclick="app.showView('booking'); app.toggleMenu()" class="btn-primary w-full py-5 text-xl">Reserve
+                Spot Now</button>
+            <div class="flex justify-center gap-8 text-slate-500 text-xl">
+                <i class="fab fa-twitter"></i>
+                <i class="fab fa-linkedin"></i>
+                <i class="fab fa-instagram"></i>
+            </div>
+        </div>
+    </div>
+
+    <!-- VIEWS CONTAINER -->
+    <main class="pt-20">
+
+        <!-- LANDING VIEW -->
+        <div id="view-landing" class="view active min-h-screen">
+            <!-- Hero Section -->
+            <section class="relative min-h-[85vh] flex items-center px-6 lg:px-12 overflow-hidden">
+                <div
+                    class="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(99,102,241,0.1),transparent)] pointer-events-none">
+                </div>
+                <div class="max-w-7xl mx-auto grid lg:grid-cols-2 gap-12 items-center relative z-10 w-full">
+                    <div class="space-y-8 text-center lg:text-left animate-in slide-in-from-left duration-700">
+                        <div
+                            class="inline-flex items-center gap-2 px-4 py-2 bg-primary/10 border border-primary/20 rounded-full text-primary text-xs font-bold uppercase tracking-widest">
+                            <i class="fas fa-bolt"></i> India's #1 Smart Parking Ecosystem
+                        </div>
+                        <h1 class="text-5xl lg:text-8xl font-outfit font-extrabold leading-[1.1] text-white">
+                            Zero Stress <br><span
+                                class="text-transparent bg-clip-text bg-gradient-to-r from-primary via-secondary to-accent">Infinite
+                                Parking</span>
+                        </h1>
+                        <p class="text-lg text-slate-400 max-w-xl mx-auto lg:mx-0">
+                            Integrated IoT tracking, seamless UPI payments, and real-time navigation. Find the closest
+                            spot in seconds.
+                        </p>
+                        <div class="flex flex-wrap justify-center lg:justify-start gap-4">
+                            <button onclick="app.showView('map')" class="btn-primary text-lg px-8 py-4">
+                                Find a Spot <i class="fas fa-search-location"></i>
+                            </button>
+                            <button onclick="app.showView('booking')" class="btn-outline text-lg px-8 py-4">
+                                Interactive Demo
+                            </button>
+                        </div>
+                    </div>
+                    <div class="relative hidden lg:block animate-float">
+                        <img src="https://images.unsplash.com/photo-1590674899484-d5640e854abe?auto=format&fit=crop&q=80&w=1200"
+                            alt="Parking"
+                            class="rounded-[2.5rem] border border-white/10 shadow-2xl shadow-primary/20 rotate-3">
+                        <div class="absolute -bottom-10 -left-10 glass p-8 shadow-2xl space-y-2 max-w-xs -rotate-3">
+                            <div class="flex items-center gap-2 text-secondary">
+                                <i class="fas fa-check-circle"></i>
+                                <span class="font-bold">LIVE AVAILABILITY</span>
+                            </div>
+                            <p class="text-3xl font-bold">14,250+ <span class="text-sm font-normal text-slate-400">Slots
+                                    Found</span></p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Quick Stats -->
+            <section class="py-20 px-6 lg:px-12 bg-white/[0.02]">
+                <div class="max-w-7xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-8">
+                    <div class="text-center group p-6 glass hover:bg-primary/5 transition-all">
+                        <p
+                            class="text-4xl font-outfit font-extrabold text-white group-hover:text-primary transition-colors">
+                            99.8%</p>
+                        <p class="text-xs text-slate-500 uppercase font-bold tracking-widest mt-2">Uptime Reliability
+                        </p>
+                    </div>
+                    <div class="text-center group p-6 glass hover:bg-secondary/5 transition-all">
+                        <p
+                            class="text-4xl font-outfit font-extrabold text-white group-hover:text-secondary transition-colors">
+                            450+</p>
+                        <p class="text-xs text-slate-500 uppercase font-bold tracking-widest mt-2">Indian Cities</p>
+                    </div>
+                    <div class="text-center group p-6 glass hover:bg-accent/5 transition-all">
+                        <p
+                            class="text-4xl font-outfit font-extrabold text-white group-hover:text-accent transition-colors">
+                            ₹1.2Cr</p>
+                        <p class="text-xs text-slate-500 uppercase font-bold tracking-widest mt-2">User Savings</p>
+                    </div>
+                    <div class="text-center group p-6 glass hover:bg-primary/5 transition-all">
+                        <p
+                            class="text-4xl font-outfit font-extrabold text-white group-hover:text-primary transition-colors">
+                            1.5M</p>
+                        <p class="text-xs text-slate-500 uppercase font-bold tracking-widest mt-2">Active Drivers</p>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <!-- MAP VIEW -->
+        <div id="view-map" class="view min-h-[calc(100vh-80px)]">
+            <div class="flex h-[calc(100vh-80px)]">
+                <!-- Sidebar -->
+                <div
+                    class="w-full md:w-96 glass rounded-none border-y-0 border-l-0 p-6 flex flex-col gap-6 z-10 bg-dark/90 text-left">
+                    <div>
+                        <h2 class="text-3xl font-outfit font-bold text-white mb-2">Find Parking</h2>
+                        <p class="text-sm text-slate-400">Search by city or find the nearest hub directly.</p>
+                    </div>
+
+                    <div class="relative">
+                        <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-500"></i>
+                        <input id="map-search" type="text" placeholder="Search City (e.g. Delhi, Mumbai)"
+                            class="w-full bg-white/5 border border-white/10 rounded-xl pl-12 pr-4 py-4 text-white focus:border-primary outline-none transition-all">
+                    </div>
+
+                    <button onclick="app.findNearMe()"
+                        class="btn-primary w-full py-4 bg-gradient-to-r from-secondary to-green-600 shadow-secondary/20">
+                        <i class="fas fa-crosshairs"></i> Find Hubs Near Me
+                    </button>
+
+                    <div id="map-results" class="flex-1 overflow-y-auto space-y-4 custom-scrollbar pr-2">
+                        <!-- Search results will appear here -->
+                    </div>
+                </div>
+
+                <!-- Live Map -->
+                <div class="flex-1 relative">
+                    <div id="main-map" class="w-full h-full z-0"></div>
+                    <div
+                        class="absolute top-4 right-4 z-10 glass px-4 py-2 text-xs font-bold text-white flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-secondary animate-pulse"></span> SYSTEM ONLINE (V3.2)
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- BOOKING VIEW -->
+        <div id="view-booking" class="view min-h-screen px-6 lg:px-12 py-10">
+            <div class="max-w-7xl mx-auto grid lg:grid-cols-3 gap-10">
+                <!-- Selection Panel -->
+                <div class="lg:col-span-2 space-y-10 text-center lg:text-left">
+                    <div class="flex flex-col md:flex-row justify-between items-center gap-6">
+                        <div>
+                            <h2 id="booking-hub-title" class="text-4xl font-outfit font-bold text-white">Central
+                                Multilevel Parking</h2>
+                            <p id="booking-hub-city" class="text-slate-400">Bengaluru Corporate Hub • Floor 2</p>
+                        </div>
+                        <div class="flex glass p-2 gap-2">
+                            <button onclick="app.switchFloor(1)"
+                                class="floor-btn px-4 py-2 rounded-xl text-sm font-bold bg-primary text-white">F1</button>
+                            <button onclick="app.switchFloor(2)"
+                                class="floor-btn px-4 py-2 rounded-xl text-sm font-bold hover:bg-white/10">F2</button>
+                            <button onclick="app.switchFloor(3)"
+                                class="floor-btn px-4 py-2 rounded-xl text-sm font-bold hover:bg-white/10">F3</button>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 md:grid-cols-5 gap-4" id="slot-grid">
+                        <!-- Slots generated by JS -->
+                    </div>
+
+                    <div class="flex justify-center md:justify-start gap-8">
+                        <div class="flex items-center gap-2 text-xs font-bold text-slate-500">
+                            <div class="w-3 h-3 glass border-white/10 bg-white/5"></div> AVAILABLE
+                        </div>
+                        <div class="flex items-center gap-2 text-xs font-bold text-slate-500">
+                            <div class="w-3 h-3 glass border-red-500/30 bg-red-500/10"></div> OCCUPIED
+                        </div>
+                        <div class="flex items-center gap-2 text-xs font-bold text-slate-500">
+                            <div class="w-3 h-3 glass border-secondary bg-secondary/20"></div> SELECTED
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Booking Summary -->
+                <div class="space-y-6">
+                    <div class="glass p-8 space-y-8 sticky top-24 border-primary/20 text-left">
+                        <h3 class="text-2xl font-bold"><i class="fas fa-receipt text-primary"></i> Reservation Brief
+                        </h3>
+
+                        <div class="space-y-4">
+                            <div class="space-y-2">
+                                <label class="text-[10px] uppercase tracking-widest font-bold text-slate-500">Vehicle
+                                    Type</label>
+                                <select id="book-vehicle" onchange="app.updateBilling()"
+                                    class="w-full bg-dark border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-primary">
+                                    <option value="bike">🏍 Two Wheeler (₹30/hr)</option>
+                                    <option value="car">🚗 Hatchback/Sedan (₹50/hr)</option>
+                                    <option value="suv">🚙 SUV / Minivan (₹100/hr)</option>
+                                    <option value="ev">⚡ EV (₹70/hr)</option>
+                                    <option value="luxury">💎 Luxury / Exotic (₹150/hr)</option>
+                                    <option value="heavy">🚌 Heavy Vehicle / Bus (₹250/hr)</option>
+                                </select>
+                            </div>
+
+                            <div class="space-y-2">
+                                <label
+                                    class="text-[10px] uppercase tracking-widest font-bold text-slate-500">Duration</label>
+                                <div class="flex items-center gap-4">
+                                    <input type="range" id="book-hours" min="1" max="24" value="2"
+                                        oninput="app.updateBilling()" class="flex-1 accent-primary">
+                                    <span id="hours-display" class="w-16 text-center font-bold text-primary">2
+                                        Hrs</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="p-6 bg-white/5 rounded-2xl border border-white/10 space-y-4">
+                            <div class="flex justify-between text-sm">
+                                <span class="text-slate-400">Base Fare</span>
+                                <span id="bill-base" class="font-bold">₹100</span>
+                            </div>
+                            <div class="flex justify-between text-sm">
+                                <span class="text-slate-400">Taxes (18%)</span>
+                                <span id="bill-tax" class="font-bold">₹18</span>
+                            </div>
+                            <hr class="border-white/10">
+                            <div class="flex justify-between items-center text-xl font-outfit">
+                                <span class="font-bold">Total Amount</span>
+                                <span id="bill-total" class="font-extrabold text-secondary">₹118</span>
+                            </div>
+                        </div>
+
+                        <button onclick="app.initiatePayment()" class="btn-primary w-full py-5 text-xl">
+                            PAY & SECURE SLOT <i class="fas fa-arrow-right"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- DASHBOARD VIEW -->
+        <div id="view-dashboard" class="view min-h-screen px-6 lg:px-12 py-10">
+            <div class="max-w-7xl mx-auto space-y-12">
+                <div class="flex flex-col md:flex-row justify-between items-end gap-6 text-left">
+                    <div>
+                        <h2 class="text-5xl font-outfit font-extrabold text-white">Driver Console</h2>
+                        <p class="text-slate-400">Manage your active sessions and reward points.</p>
+                    </div>
+                    <div class="flex gap-4">
+                        <div class="glass p-6 text-center min-w-[150px]">
+                            <p class="text-[10px] text-slate-500 font-bold uppercase mb-1">Total Rewards</p>
+                            <p class="text-3xl font-extrabold text-primary">1,240 <span
+                                    class="text-xs font-normal">pts</span></p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid md:grid-cols-3 gap-8 text-left" id="active-sessions-list">
+                    <!-- Sessions will appear here -->
+                </div>
+
+                <div class="space-y-6 text-left">
+                    <h3 class="text-2xl font-bold">Transaction History</h3>
+                    <div class="glass overflow-hidden">
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left">
+                                <thead class="bg-white/5 text-[10px] font-bold uppercase tracking-wider">
+                                    <tr>
+                                        <th class="p-6">Hub / Location</th>
+                                        <th class="p-6">Vehicle</th>
+                                        <th class="p-6">Duration</th>
+                                        <th class="p-6">Amount Paid</th>
+                                        <th class="p-6">Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="history-table" class="text-sm">
+                                    <!-- History entries -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ADMIN VIEW -->
+        <div id="view-admin" class="view min-h-screen px-6 lg:px-12 py-10">
+            <div class="max-w-7xl mx-auto space-y-12">
+                <div class="flex flex-col md:flex-row justify-between items-end gap-6 text-left">
+                    <div>
+                        <div
+                            class="inline-flex items-center gap-2 px-3 py-1 bg-accent/10 border border-accent/20 rounded-full text-accent text-[10px] font-bold uppercase tracking-widest mb-4">
+                            <i class="fas fa-user-shield"></i> Administration Panel
+                        </div>
+                        <h2 class="text-5xl font-outfit font-extrabold text-white">Cloud Analytics</h2>
+                        <p class="text-slate-400">Real-time revenue tracking and system-wide occupancy.</p>
+                    </div>
+                    <div class="flex gap-4">
+                        <button onclick="app.clearSystemData()"
+                            class="btn-outline border-accent/30 text-accent hover:bg-accent/10">Clear All Logs</button>
+                    </div>
+                </div>
+
+                <!-- Stats Grid -->
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
+                    <div class="glass p-8 text-left border-primary/20">
+                        <p class="text-[10px] font-bold text-slate-500 uppercase mb-2">Total Revenue</p>
+                        <h4 class="text-4xl font-extrabold text-white" id="admin-total-rev">₹0</h4>
+                        <p class="text-[10px] text-secondary font-bold mt-2"><i class="fas fa-caret-up"></i> Live</p>
+                    </div>
+                    <div class="glass p-8 text-left border-secondary/20">
+                        <p class="text-[10px] font-bold text-slate-500 uppercase mb-2">Active Sessions</p>
+                        <h4 class="text-4xl font-extrabold text-white" id="admin-active-count">0</h4>
+                    </div>
+                    <div class="glass p-8 text-left border-accent/20">
+                        <p class="text-[10px] font-bold text-slate-500 uppercase mb-2">System Health</p>
+                        <h4 class="text-4xl font-extrabold text-white">99.8%</h4>
+                    </div>
+                    <div class="glass p-8 text-left border-white/10 text-primary">
+                        <p class="text-[10px] font-bold text-slate-500 uppercase mb-2">Avg. Duration</p>
+                        <h4 class="text-4xl font-extrabold text-white">3.4 h</h4>
+                    </div>
+                </div>
+
+                <div class="grid lg:grid-cols-2 gap-8">
+                    <div class="glass p-8 space-y-6">
+                        <h3 class="text-xl font-bold">Revenue Insights</h3>
+                        <div
+                            class="h-[300px] flex items-center justify-center bg-white/5 rounded-2xl border border-white/10">
+                            <canvas id="revenueChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="glass p-8 space-y-6">
+                        <h3 class="text-xl font-bold">Occupancy Distribution</h3>
+                        <div
+                            class="h-[300px] flex items-center justify-center bg-white/5 rounded-2xl border border-white/10">
+                            <canvas id="occupancyChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- PAYMENT MODAL -->
+    <div id="payment-modal"
+        class="fixed inset-0 z-[2000] hidden items-center justify-center bg-dark/95 backdrop-blur-md p-6">
+        <div class="glass max-w-lg w-full p-10 space-y-8 animate-in zoom-in duration-300">
+            <div class="text-center space-y-2">
+                <div
+                    class="w-20 h-20 bg-primary/20 text-primary rounded-full flex items-center justify-center mx-auto mb-6 text-3xl">
+                    <i class="fas fa-wallet"></i>
+                </div>
+                <h3 class="text-3xl font-bold">Secure Payment</h3>
+                <p class="text-slate-400">Verify your details and choose a payment method.</p>
+            </div>
+
+            <div class="space-y-4">
+                <div class="space-y-2 text-left">
+                    <label class="text-[10px] font-bold uppercase text-slate-500">Enter Vehicle Number</label>
+                    <input id="pay-veh-num" type="text" placeholder="KA-01-AB-1234"
+                        class="w-full bg-white/5 border border-white/10 rounded-xl p-4 text-white focus:border-primary outline-none">
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <button onclick="app.processPayment('UPI')"
+                        class="p-6 glass hover:bg-white/10 transition-all text-center space-y-3">
+                        <i class="fas fa-mobile-alt text-2xl text-secondary"></i>
+                        <p class="text-sm font-bold">UPI Payments</p>
+                    </button>
+                    <button onclick="app.processPayment('CARD')"
+                        class="p-6 glass hover:bg-white/10 transition-all text-center space-y-3">
+                        <i class="fas fa-credit-card text-2xl text-primary"></i>
+                        <p class="text-sm font-bold">Credit/Debit</p>
+                    </button>
+                </div>
+
+                <div id="paypal-button-container" class="mt-4"></div>
+            </div>
+
+            <div class="text-center">
+                <p class="text-xl font-bold mb-6">Total Due: <span class="text-secondary"
+                        id="pay-total-display">₹118</span></p>
+                <button onclick="document.getElementById('payment-modal').classList.add('hidden')"
+                    class="text-slate-500 font-bold hover:text-white transition-colors">Cancel Transaction</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- SUCCESS MODAL -->
+    <div id="success-modal"
+        class="fixed inset-0 z-[3000] hidden items-center justify-center bg-dark/95 backdrop-blur-md p-6">
+        <div class="glass max-w-sm w-full p-10 text-center space-y-6">
+            <div
+                class="w-24 h-24 bg-secondary/20 text-secondary rounded-full flex items-center justify-center mx-auto text-5xl animate-bounce">
+                <i class="fas fa-check"></i>
+            </div>
+            <h3 class="text-3xl font-bold">Success!</h3>
+            <p class="text-slate-400">Your slot has been reserved. Check your dashboard for the digital ticket.</p>
+            <button onclick="app.closeSuccess()" class="btn-primary w-full py-4">GO TO DASHBOARD</button>
+        </div>
+    </div>
+
+    <!-- NOTIFICATION SYSTEM -->
+    <div id="toast"
+        class="fixed bottom-10 right-10 z-[5000] p-6 glass border-secondary/50 hidden animate-in slide-in-from-right">
+        <div class="flex items-center gap-4">
+            <div class="w-10 h-10 bg-secondary/10 text-secondary rounded-full flex items-center justify-center">
+                <i class="fas fa-bell"></i>
+            </div>
+            <div class="text-left">
+                <p class="font-bold text-white" id="toast-title">Success</p>
+                <p class="text-xs text-slate-400" id="toast-msg">Action completed successfully.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- APP LOGIC -->
+    <script>
+        // Database Simulation Wrapper
+        const MegaDB = {
+            prefix: 'megapark_',
+            save(key, data) {
+                try {
+                    localStorage.setItem(this.prefix + key, JSON.stringify(data));
+                    console.log(`[DB] Saved ${key}`);
+                    return true;
+                } catch (e) {
+                    console.error(`[DB] Error saving ${key}`, e);
+                    return false;
+                }
+            },
+            get(key, defaultVal = []) {
+                const data = localStorage.getItem(this.prefix + key);
+                return data ? JSON.parse(data) : defaultVal;
+            },
+            clear() {
+                Object.keys(localStorage).forEach(key => {
+                    if (key.startsWith(this.prefix)) localStorage.removeItem(key);
+                });
+            }
+        };
+
+        const app = {
+            state: {
+                activeView: 'landing',
+                selectedHub: null,
+                selectedSlot: null,
+                bookings: MegaDB.get('bookings'),
+                hubs: [
+                    { id: 1, name: "Phoenix Mall, Mumbai", city: "Mumbai", area: "Lower Parel", lat: 18.9944, lng: 72.8247, price: 60, slots: 50 },
+                    { id: 2, name: "Nexus Seawoods", city: "Navi Mumbai", area: "Nerul", lat: 19.0195, lng: 73.0180, price: 50, slots: 40 },
+                    { id: 3, name: "Select CITYWALK", city: "Delhi", area: "Saket", lat: 28.5289, lng: 77.2181, price: 80, slots: 60 },
+                    { id: 4, name: "DLF Cyber Hub", city: "Gurugram", area: "Phase 2", lat: 28.4950, lng: 77.0890, price: 100, slots: 80 },
+                    { id: 5, name: "Brigade Road Multi-level", city: "Bengaluru", area: "MG Road", lat: 12.9716, lng: 77.6046, price: 50, slots: 100 },
+                    { id: 6, name: "Forum Shantiniketan", city: "Bengaluru", area: "Whitefield", lat: 12.9902, lng: 77.7289, price: 60, slots: 45 }
+                ]
+            },
+
+            init() {
+                this.initMap();
+                this.bindEvents();
+                this.renderResults();
+                this.renderSlots();
+                this.renderDashboard();
+                this.updateBilling();
+                this.selectHub(5, true); // Default selection for showcase
+                this.initPayPal();
+                this.notify('Database Linked', 'Secure connection established with MegaDB Cloud.', 'bg-secondary/20');
+            },
+
+            initPayPal() {
+                if (window.paypal) {
+                    paypal.Buttons({
+                        style: {
+                            layout: 'horizontal',
+                            color: 'gold',
+                            shape: 'rect',
+                            label: 'pay'
+                        },
+                        createOrder: (data, actions) => {
+                            return actions.order.create({
+                                purchase_units: [{
+                                    amount: {
+                                        value: (this.state.currentTotal / 82).toFixed(2) // Conversion to USD approx
+                                    }
+                                }]
+                            });
+                        },
+                        onApprove: (data, actions) => {
+                            return actions.order.capture().then(details => {
+                                this.processPayment('PayPal');
+                            });
+                        }
+                    }).render('#paypal-button-container');
+                }
+            },
+
+            bindEvents() {
+                document.getElementById('map-search').addEventListener('input', (e) => this.renderResults(e.target.value));
+            },
+
+            showView(viewId) {
+                document.querySelectorAll('.view').forEach(v => v.classList.remove('active', 'opacity-100'));
+                const target = document.getElementById(`view-${viewId}`);
+                target.classList.add('active');
+                setTimeout(() => target.classList.add('opacity-100'), 50);
+
+                this.state.activeView = viewId;
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                if (viewId === 'map') setTimeout(() => this.map.invalidateSize(), 300);
+            },
+
+            initMap() {
+                this.map = L.map('main-map').setView([20.5937, 78.9629], 5);
+                L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(this.map);
+
+                this.state.hubs.forEach(hub => {
+                    const marker = L.marker([hub.lat, hub.lng]).addTo(this.map);
+                    marker.bindPopup(`
+                        <div class="text-dark p-2 min-w-[150px]">
+                            <h4 class="font-bold border-b pb-1 mb-2">${hub.name}</h4>
+                            <p class="text-xs mb-3 text-slate-600">${hub.city} | ₹${hub.price}/hr</p>
+                            <button onclick="app.selectHub(${hub.id}, true)" class="w-full bg-indigo-600 text-white py-2 rounded-lg text-xs font-bold">Select Hub</button>
+                        </div>
+                    `);
+                });
+            },
+
+            renderResults(query = '') {
+                const filtered = this.state.hubs.filter(h =>
+                    h.name.toLowerCase().includes(query.toLowerCase()) ||
+                    h.city.toLowerCase().includes(query.toLowerCase())
+                );
+
+                document.getElementById('map-results').innerHTML = filtered.map(h => `
+                    <div onclick="app.selectHub(${h.id})" class="glass p-4 hover:border-primary cursor-pointer transition-all flex justify-between items-center group">
+                        <div class="text-left">
+                            <h4 class="font-bold text-white group-hover:text-primary transition-colors">${h.name}</h4>
+                            <p class="text-[10px] text-slate-500">${h.city} • ₹${h.price}/hr</p>
+                        </div>
+                        <i class="fas fa-chevron-right text-xs text-slate-700 group-hover:text-primary"></i>
+                    </div>
+                `).join('') || '<p class="text-center text-slate-600 text-xs py-10">No hubs found near this location.</p>';
+            },
+
+            selectHub(id, fromMarker = false) {
+                const hub = this.state.hubs.find(h => h.id === id);
+                this.state.selectedHub = hub;
+                document.getElementById('booking-hub-title').innerText = hub.name;
+                document.getElementById('booking-hub-city').innerText = `${hub.city} • ${hub.area} • Floor 2`;
+
+                if (!fromMarker) {
+                    this.map.setView([hub.lat, hub.lng], 15);
+                    this.showView('booking');
+                }
+
+                this.renderSlots();
+                this.updateBilling();
+                this.notify('Hub Connected', `Ready to book at ${hub.name}`);
+            },
+
+            findNearMe() {
+                if (!window.isSecureContext && window.location.protocol !== 'file:') {
+                    return this.notify('Security Block', 'Geolocation requires an HTTPS connection.', 'bg-red-500');
+                }
+
+                if ("geolocation" in navigator) {
+                    this.notify('Locating...', 'Requesting GPS coordinates...');
+
+                    const options = {
+                        enableHighAccuracy: true,
+                        timeout: 5000,
+                        maximumAge: 0
+                    };
+
+                    navigator.geolocation.getCurrentPosition(pos => {
+                        const { latitude, longitude } = pos.coords;
+                        this.map.setView([latitude, longitude], 12);
+
+                        // Add a temporary marker for user location
+                        if (this.userMarker) this.map.removeLayer(this.userMarker);
+                        this.userMarker = L.circleMarker([latitude, longitude], {
+                            radius: 10,
+                            fillColor: "#6366f1",
+                            color: "#fff",
+                            weight: 2,
+                            opacity: 1,
+                            fillOpacity: 0.8
+                        }).addTo(this.map).bindPopup("You are here").openPopup();
+
+                        this.notify('Near Me Found', 'Listing hubs in your proximity.');
+                    }, err => {
+                        let msg = 'Position unavailable.';
+                        if (err.code === 1) msg = 'Permission denied. Please allow location access.';
+                        if (err.code === 3) msg = 'Request timed out. Try again.';
+
+                        this.notify('GPS Error', msg, 'bg-red-500');
+                        console.error('Geolocation Error:', err);
+                    }, options);
+                } else {
+                    this.notify('Not Supported', 'Your browser does not support Geolocation.', 'bg-red-500');
+                }
+            },
+
+            renderSlots() {
+                const grid = document.getElementById('slot-grid');
+                grid.innerHTML = '';
+                const count = this.state.selectedHub ? this.state.selectedHub.slots : 20;
+
+                for (let i = 1; i <= count; i++) {
+                    const isOccupied = Math.random() > 0.8;
+                    const el = document.createElement('div');
+                    el.className = `slot-card ${isOccupied ? 'occupied' : 'available'}`;
+                    el.innerHTML = `
+                        <i class="fas fa-car-side"></i>
+                        <span class="text-[10px] font-bold">P-${100 + i}</span>
+                    `;
+                    if (!isOccupied) {
+                        el.onclick = () => {
+                            document.querySelectorAll('.slot-card').forEach(s => s.classList.remove('selected'));
+                            el.classList.add('selected');
+                            this.state.selectedSlot = `P-${100 + i}`;
+                            this.notify('Slot Selected', `Ready to reserve spot ${this.state.selectedSlot}`);
+                        };
+                    }
+                    grid.appendChild(el);
+                }
+            },
+
+            switchFloor(f) {
+                this.notify('Switching Floor', `Moving to Level ${f}...`);
+                document.querySelectorAll('.floor-btn').forEach((b, i) => {
+                    b.classList.toggle('bg-primary', i + 1 === f);
+                    b.classList.toggle('text-white', i + 1 === f);
+                });
+                this.renderSlots();
+            },
+
+            updateBilling() {
+                const vehMap = {
+                    bike: 30,
+                    car: 50,
+                    suv: 100,
+                    ev: 70,
+                    luxury: 150,
+                    heavy: 250
+                };
+                const hours = document.getElementById('book-hours').value;
+                document.getElementById('hours-display').innerText = `${hours} Hrs`;
+
+                const hubRate = this.state.selectedHub ? this.state.selectedHub.price / 50 : 1;
+                const rateHr = (vehMap[vehicle] || 50) * hubRate;
+                const base = Math.round(rateHr * hours);
+                const tax = Math.round(base * 0.18);
+                const total = base + tax;
+
+                document.getElementById('bill-base').innerText = `₹${base}`;
+                document.getElementById('bill-tax').innerText = `₹${tax}`;
+                document.getElementById('bill-total').innerText = `₹${total}`;
+                document.getElementById('pay-total-display').innerText = `₹${total}`;
+
+                this.state.currentTotal = total;
+                this.state.currentHours = hours;
+            },
+
+            initiatePayment() {
+                if (!this.state.selectedSlot) return this.notify('Action Required', 'Please select a parking slot first.', 'bg-red-500');
+                document.getElementById('payment-modal').classList.remove('hidden');
+            },
+
+            processPayment(method) {
+                const vehNum = document.getElementById('pay-veh-num').value;
+                if (!vehNum) return this.notify('Validation Error', 'Vehicle plate number is required.', 'bg-red-500');
+
+                this.notify('Processing...', `Securing ${method} gateway...`);
+
+                setTimeout(() => {
+                    const newBooking = {
+                        id: 'B-' + Math.floor(Math.random() * 900000 + 100000),
+                        hub: this.state.selectedHub.name,
+                        city: this.state.selectedHub.city,
+                        slot: this.state.selectedSlot,
+                        vehicle: vehNum.toUpperCase(),
+                        duration: this.state.currentHours + ' Hrs',
+                        amount: `₹${this.state.currentTotal}`,
+                        date: new Date().toLocaleDateString('en-IN'),
+                        status: 'Active'
+                    };
+
+                    this.state.bookings.unshift(newBooking);
+                    MegaDB.save('bookings', this.state.bookings);
+
+                    document.getElementById('payment-modal').classList.add('hidden');
+                    document.getElementById('success-modal').classList.remove('hidden');
+                    this.renderDashboard();
+                }, 2000);
+            },
+
+            closeSuccess() {
+                document.getElementById('success-modal').classList.add('hidden');
+                this.showView('dashboard');
+            },
+
+            renderDashboard() {
+                const historyBody = document.getElementById('history-table');
+                const sessionsList = document.getElementById('active-sessions-list');
+
+                historyBody.innerHTML = this.state.bookings.map(b => `
+                    <tr class="border-t border-white/5 hover:bg-white/[0.02] transition-colors">
+                        <td class="p-6">
+                            <span class="block font-bold">${b.hub}</span>
+                            <span class="text-[10px] text-slate-500 uppercase">${b.city} • ${b.date}</span>
+                        </td>
+                        <td class="p-6">${b.vehicle}</td>
+                        <td class="p-6">${b.duration}</td>
+                        <td class="p-6 font-bold text-secondary">${b.amount}</td>
+                        <td class="p-6">
+                            <span class="px-2 py-1 rounded bg-green-500/10 text-green-500 text-[10px] font-bold uppercase">${b.status}</span>
+                        </td>
+                    </tr>
+                `).join('');
+
+                const active = this.state.bookings.filter(b => b.status === 'Active');
+                sessionsList.innerHTML = active.map(b => `
+                    <div class="glass p-8 border-secondary/20 relative overflow-hidden space-y-4 shadow-2xl">
+                        <div class="absolute top-0 right-0 bg-secondary text-dark text-[10px] font-bold px-4 py-1 rounded-bl-xl uppercase tracking-widest">Digital Pass</div>
+                        <div>
+                            <p class="text-[10px] font-bold text-slate-500 uppercase">Current Session</p>
+                            <h4 class="text-2xl font-bold">${b.hub}</h4>
+                            <p class="text-sm text-slate-500">Slot: <span class="text-white font-bold">${b.slot}</span></p>
+                        </div>
+                        <div class="pt-4 border-t border-white/10 flex justify-between items-center">
+                            <div>
+                                <p class="text-xs text-slate-500">Pass Code</p>
+                                <p class="font-mono text-xl text-primary font-bold">${b.id}</p>
+                            </div>
+                            <i class="fas fa-qrcode text-4xl opacity-50"></i>
+                        </div>
+                        <button onclick="app.endSession('${b.id}')" class="w-full py-2 bg-red-500/10 text-red-500 rounded-lg text-xs font-bold hover:bg-red-500/20 transition-all">End Session</button>
+                    </div>
+                `).join('');
+
+                if (active.length === 0) {
+                    sessionsList.innerHTML = '<div class="col-span-full text-center py-20 glass text-slate-600 italic">No active parking sessions found. Start by booking a slot!</div>';
+                }
+            },
+
+            endSession(id) {
+                const booking = this.state.bookings.find(b => b.id === id);
+                if (booking) {
+                    booking.status = 'Completed';
+                    MegaDB.save('bookings', this.state.bookings);
+                    this.renderDashboard();
+                    this.renderAdmin();
+                    this.notify('Session Ended', `Parking at ${booking.hub} has been closed.`);
+                }
+            },
+
+            notify(title, msg, color = 'bg-dark/80') {
+                const toast = document.getElementById('toast');
+                document.getElementById('toast-title').innerText = title;
+                document.getElementById('toast-msg').innerText = msg;
+                toast.classList.remove('hidden');
+                setTimeout(() => toast.classList.add('hidden'), 4000);
+            },
+
+            toggleAdmin() {
+                this.showView('admin');
+                this.renderAdmin();
+                this.notify('Admin Access', 'Biometric bypass successful. Welcome back, Manager.');
+            },
+
+            toggleMenu() {
+                const menu = document.getElementById('mobile-menu');
+                menu.classList.toggle('translate-x-full');
+            },
+
+            renderAdmin() {
+                const totalRev = this.state.bookings.reduce((sum, b) => sum + parseInt(b.amount.replace('₹', '')), 0);
+                const activeCount = this.state.bookings.filter(b => b.status === 'Active').length;
+
+                document.getElementById('admin-total-rev').innerText = `₹${totalRev.toLocaleString('en-IN')}`;
+                document.getElementById('admin-active-count').innerText = activeCount;
+
+                this.renderCharts();
+            },
+
+            renderCharts() {
+                // Revenue Chart
+                const revCtx = document.getElementById('revenueChart').getContext('2d');
+                if (this.revChart) this.revChart.destroy();
+
+                this.revChart = new Chart(revCtx, {
+                    type: 'line',
+                    data: {
+                        labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+                        datasets: [{
+                            label: 'Daily Revenue',
+                            data: [12000, 19000, 15000, 25000, 22000, 30000, 28000],
+                            borderColor: '#6366f1',
+                            backgroundColor: 'rgba(99, 102, 241, 0.1)',
+                            fill: true,
+                            tension: 0.4
+                        }]
+                    },
+                    options: { maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { display: false }, x: { grid: { display: false } } } }
+                });
+
+                // Occupancy Chart
+                const occCtx = document.getElementById('occupancyChart').getContext('2d');
+                if (this.occChart) this.occChart.destroy();
+
+                this.occChart = new Chart(occCtx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['Mumbai', 'Delhi', 'Bengaluru', 'Gurugram'],
+                        datasets: [{
+                            data: [45, 25, 20, 10],
+                            backgroundColor: ['#6366f1', '#10b981', '#f43f5e', '#f59e0b'],
+                            borderWidth: 0
+                        }]
+                    },
+                    options: { maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#94a3b8' } } } }
+                });
+            },
+
+            clearSystemData() {
+                if (confirm('Are you sure you want to clear all system logs? This cannot be undone.')) {
+                    MegaDB.clear();
+                    this.state.bookings = [];
+                    this.renderDashboard();
+                    this.renderAdmin();
+                    this.notify('System Reset', 'All transaction logs cleared.', 'bg-accent');
+                }
+            }
+        };
+
+        window.onload = () => app.init();
+    </script>
+</body>
+
+</html>
